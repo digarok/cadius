@@ -9,7 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(__APPLE__)
 #include <malloc.h>
+#else
+#endif
 #include <errno.h>
 
 #include "Dc_Shared.h"

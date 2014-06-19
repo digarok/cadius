@@ -10,7 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#if !defined(__APPLE__)
 #include <malloc.h>
+#endif
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>

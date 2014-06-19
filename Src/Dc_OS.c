@@ -8,25 +8,25 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#if defined(WIN32) || defined(WIN64)
+#include <io.h>
 #include <malloc.h>
+#include <direct.h>
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <unistd.h>
+#include <dirent.h>
+#include <ctype.h>
+#endif
 #include <string.h>
 #ifdef LINUX
 #include <strings.h>
-#endif
-#if defined(WIN32) || defined(WIN64)
-#include <io.h>
-#include <direct.h>
 #endif
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/timeb.h>
-
 #include <errno.h>
-
-#if defined(WIN32) || defined(WIN64)
-#include <windows.h>
-#endif
 
 #include "Dc_Shared.h"
 #include "Dc_Prodos.h"
@@ -60,6 +60,7 @@ int GetFolderFiles(char *folder_path, char *hierarchy)
   int error, rc;
   long hFile;
   int first_time = 1;
+#if defined(WIN32) || defined(WIN64)
   struct _finddata_t c_file;
   char *buffer_folder_path = NULL;
   char *buffer_file_path = NULL;
@@ -129,7 +130,7 @@ int GetFolderFiles(char *folder_path, char *hierarchy)
   /* Libération mémoire */
   free(buffer_folder_path);
   free(buffer_file_path);
-
+#endif
   return(error);
 }
 
@@ -144,6 +145,7 @@ int my_CreateDirectory(char *directory)
   char buffer[1024];
 
   /* Isole le nom du répertoire */
+  /* Isolate the directory name */
   strcpy(buffer,directory);
   for(i=strlen(directory); i>=0; i--)
     if(buffer[i] == '\\' || buffer[i] == '/')
@@ -153,19 +155,27 @@ int my_CreateDirectory(char *directory)
       }
 
   /* Vérifie s'il existe */
+  /* Verify that it exists */
   error = stat(buffer,&sts);
   if(error == 0)
     if(S_ISDIR(sts.st_mode))
       return(0);
 
-  /** Création des répertoires **/
+  /* Création des répertoires */
+  /* Creation of the directories */
   error = MakeAllDir(buffer);
   if(error == 0)
     return(1);
   
   /* On veut savoir si le ce repertoire existe et on verifie qu'on a un repertoire */
+  /* We need to check that the dir exists and verify that it's a directory */
   if(stat(buffer,&sts))
+#if defined(WIN32) || defined(WIN64)
     mkdir(buffer);
+#else
+    /* r/w/search permissions for owner and group, and read/search permissions for others */
+    mkdir(buffer, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+#endif
   else if(!S_ISDIR(sts.st_mode))
     return(1);
 
@@ -175,6 +185,7 @@ int my_CreateDirectory(char *directory)
 
 /******************************************************/
 /*  MakeAllDir() :  Creation d'un nouveau répertoire  */
+/*               :  Creation of a new directory       */
 /******************************************************/
 static int MakeAllDir(char *newdir)
 {
@@ -189,8 +200,16 @@ static int MakeAllDir(char *newdir)
   if(buffer[len-1] == '/' || buffer[len-1] == '\\')
     buffer[len-1] = '\0';
 
+
+#if defined(WIN32) || defined(WIN64)
   if(mkdir(buffer) == 0)
     return(1);
+#else
+    /* r/w/search permissions for owner and group, and read/search permissions for others */
+  if(mkdir(buffer, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0)
+    return(1);
+#endif
+
 
   p = buffer+1;
   while(1)
@@ -201,8 +220,16 @@ static int MakeAllDir(char *newdir)
         p++;
       hold = *p;
       *p = 0;
+
+#if defined(WIN32) || defined(WIN64)
       if((mkdir(buffer) == -1) && (errno == ENOENT))
         return(0);
+#else
+      /* r/w/search permissions for owner and group, and read/search permissions for others */
+      if((mkdir(buffer, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0) && (errno == ENOENT))
+        return(0);
+#endif
+      
       if(hold == 0)
         break;
       *p++ = hold;
