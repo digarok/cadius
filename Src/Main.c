@@ -59,8 +59,9 @@
 void usage(char *);
 struct parameter *GetParamLine(int,char *[]);
 
-// EXTRACTFILE C:\AppleIIgs\D3.2mg /D3/Divers/Merlin/Sources/Chaine.s c:\AppleIIgs\D3\
-
+/*
+ * EXTRACTFILE C:\AppleIIgs\D3.2mg /D3/Divers/Merlin/Sources/Chaine.s c:\AppleIIgs\D3\ 
+ */
 /****************************************************/
 /*  main() :  Fonction principale de l'application. */
 /****************************************************/
