@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <ctype.h>
+#include <ftw.h>
 #endif
 #include <string.h>
 #ifdef LINUX
@@ -51,16 +52,36 @@ void my_DeleteFile(char *file_path)
   unlink(file_path);
 }
 
+int myfunc(const char *path, const struct stat *sptr, int type)
+{
+  /* Types: FTW_D = directory, FTW_F = normal file, FTW_DNR = non-traversable
+   *            directory.  Do a man ftw for the full scoop!!!!*/
+  if(!my_stricmp((char *)path,".") || !my_stricmp((char *)path,".."))
+    return 0;
+  if(path && *path && path[strlen(path) - 1] == '/') 
+    return 0;
+  printf("Name = %s\n", path);
+  if (type == FTW_DNR) printf("Directory %s cannot be traversed.\n", path);
+  if (type == FTW_D)
+    return 0; 
+
+  //if(MatchHierarchie(buffer_file_path,hierarchy))
+   my_Memory(MEMORY_ADD_FILE,(char *)path,NULL);
+  return 0;
+} 
 
 /********************************************************************/
 /*  GetFolderFiles() :  Récupère tous les fichiers d'un répertoire. */
 /********************************************************************/
 int GetFolderFiles(char *folder_path, char *hierarchy)
 {
+#if defined(__APPLE__)
+  ftw(folder_path, myfunc, 7);
+  return(0);
+#elif defined(WIN32) || defined(WIN64)
   int error, rc;
   long hFile;
   int first_time = 1;
-#if defined(WIN32) || defined(WIN64)
   struct _finddata_t c_file;
   char *buffer_folder_path = NULL;
   char *buffer_file_path = NULL;
@@ -82,7 +103,8 @@ int GetFolderFiles(char *folder_path, char *hierarchy)
     strcat(buffer_folder_path,FOLDER_CHARACTER);
   strcat(buffer_folder_path,"*.*");
 
-  /** On boucle sur tous les fichiers présents **/
+  /** Fr: On boucle sur tous les fichiers présents **/
+  /** En: We loop through all the present files    **/
   while(1)
     {
       if(first_time == 1)
@@ -93,32 +115,38 @@ int GetFolderFiles(char *folder_path, char *hierarchy)
       else
         rc = _findnext(hFile,&c_file);
 
-        /* On analyse le résultat */
+      /* Fr: On analyse le résultat */
+      /* En: We inspect the result  */
     	if(rc == -1)
           break;    /* no more files */
  
-      /** On traite cette entrée **/
+      /** Fr: On traite cette entrée **/
+      /** En: We handle this entry   **/
       first_time++;
       strcpy(buffer_file_path,folder_path);
       if(buffer_file_path[strlen(buffer_file_path)-1] != '\\' && buffer_file_path[strlen(buffer_file_path)-1] != '/')
         strcat(buffer_file_path,FOLDER_CHARACTER);
       strcat(buffer_file_path,c_file.name);
 
-      /** Traite le dossier de façon récursive **/
+      /** Fr: Traite le dossier de façon récursive     **/
+      /** En: Handle the folder in a recursive fashion **/
       if((c_file.attrib & _A_SUBDIR) == _A_SUBDIR)
         {
-          /* On ne traite ni . ni .. */
+          /* Fr: On ne traite ni . ni .. */
+          /* En: We don't handle . or .. */
           if(!my_stricmp(c_file.name,".") || !my_stricmp(c_file.name,".."))
             continue;
 
-          /* Recherche dans le contenu du dossier */
+          /* Fr: Recherche dans le contenu du dossier */
+          /* En: Search the contents of the folder    */
           error = GetFolderFiles(buffer_file_path,hierarchy);
           if(error)
             break;
         }
       else
         {
-          /* Conserve le nom du fichier */
+          /* Fr: Conserve le nom du fichier */
+          /* En: Store the filename         */
           if(MatchHierarchie(buffer_file_path,hierarchy))
             my_Memory(MEMORY_ADD_FILE,buffer_file_path,NULL);
         }
@@ -130,9 +158,10 @@ int GetFolderFiles(char *folder_path, char *hierarchy)
   /* Libération mémoire */
   free(buffer_folder_path);
   free(buffer_file_path);
-#endif
   return(error);
+#endif
 }
+
 
 
 /******************************************************/
