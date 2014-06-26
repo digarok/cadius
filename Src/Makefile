@@ -7,7 +7,12 @@ CFLAGS = -g -Wall
 
 default: $(TARGET)
 
+test: default install
+	cd ../test ; ./test_cadius.sh
+
+
 all: default install
+	mv $(TARGET) ..
 
 install: 
 	mv $(TARGET) ..

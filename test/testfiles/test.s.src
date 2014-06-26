@@ -1,0 +1,462 @@
+****************************************
+* Snow Effect                          *
+****************************************
+	lst off
+*	cyc
+
+	mx %00
+	
+* SNOW DATA ARRAYS
+SNOW_MAX_X	= 320+20
+SNOW_MAX_Y	= 200	
+SNOW_MAX_COUNT	= 200	;coincidentally 200... could be higher if gen did rates
+
+Snow_ListX	ds SNOW_MAX_COUNT*2
+Snow_ListY	ds SNOW_MAX_COUNT*2
+Snow_ListUndraw	ds SNOW_MAX_COUNT*2+2	;needs extra space for terminator word ($FFFF)	
+
+
+****************************************
+* Snow_Init                            *
+****************************************
+* This clears the snowflake data 
+*
+* We use $FFFF to indicate the end of our undraw list (Snow_ListUndraw) and
+* to indicate an unused flake storage area as marked in Snow_ListX.  
+*
+* Must be called prior to calls to Snow_RunFrame
+*
+Snow_Init
+	ldx #0
+	lda #$FFFF
+:zap	sta Snow_ListX,x
+	sta Snow_ListUndraw,x
+	inx
+	inx
+	cpx #SNOW_MAX_COUNT*2
+	bne :zap
+	rts
+
+	
+
+****************************************
+* Snow_RunFrame                        *
+****************************************
+* Does a single update of snow-  undrawing, updating and finally drawing
+* Expects to be called once per frame, basically from a main loop 
+Snow_RunFrame
+	inc Snow_SkipCount
+	lda Snow_SkipCount
+	cmp #$1
+	bne :reset
+
+	jsr Snow_Undraw
+	jsr Snow_Update
+	jsr Snow_MakeFlake
+	jsr Snow_Draw
+	rts
+
+:reset	stz Snow_SkipCount
+	rts
+
+Snow_SkipCount	dw 0
+
+
+Snow_Draw	ldy #0
+	sty Snow_UndrawIdx	;so sloppy
+:drawLoop	lda Snow_ListX,y
+	cmp #10	;check if clipped left
+	bcc :nextSnow	;blt
+	cmp #330	;check if clipped right
+	bcs :nextSnow
+	sec
+	sbc #10	;shift it
+	lsr	;now equating it to byte in line
+	sta :addVal+1	;store our byte offset - self-modifying code
+	bcc :evenPixel
+:oddPixel	ldx #$0F00
+	bra :storePixel	
+:evenPixel	ldx #$F000
+:storePixel	stx :orVal+1
+	lda Snow_ListY,y
+	asl
+	tax	; *2
+	lda SHR_LineList,x
+	clc
+:addVal	adc #$DDDD	;dummy bytes - self-modifying code
+	tax
+	ldal $e12000,x
+:orVal	ora #$DDDD	;dummy bytes - self-modifying code
+	stal $e12000,x
+*HACK	
+	txa	;store in undraw list
+	ldx Snow_UndrawIdx
+	sta Snow_ListUndraw,x
+	inc Snow_UndrawIdx
+	inc Snow_UndrawIdx
+*HACKEND
+:nextSnow	iny
+	iny
+	cpy #SNOW_MAX_COUNT*2
+	blt :drawLoop
+	lda #$FFFF
+	ldy Snow_UndrawIdx
+	sta Snow_ListUndraw,y
+	rts
+Snow_UndrawIdx	dw 0
+
+
+Snow_MakeFlake	lda #$FFFF	;looking for inactive snow
+	ldx #0
+
+:searchLoop	cmp Snow_ListX,x	;find one?
+	beq :foundEmpty
+	inx
+	inx
+	cpx #SNOW_MAX_COUNT*2
+	bcc :searchLoop	;blt
+	rts	;give up
+
+:foundEmpty	jsr Snow_NewXValue
+	sta Snow_ListX,x
+	stz Snow_ListY,x
+	rts
+
+
+Snow_NewXValue
+:rndLoop	jsr RAND16
+	AND #$1FF 
+	cmp #SNOW_MAX_X 
+	bcs :rndLoop	;bge
+	rts
+
+
+Snow_Update	ldy #0	;flake index ;)
+* UPDATE X VALUES
+:updateLoop	ldx Snow_ListX,y
+	cpx #$FFFF	;inactive
+	beq :nextSnow
+	jsr RAND8
+	cmp #$c0
+	bcs :rightShift	;bge
+	cmp #$20
+	bcc :leftShift	;blt
+	bra :noShift
+:leftShift	dex
+	bmi :noShift	;left bounds (wrapped to $ffff, skip store, leave at 0)
+	bra :storeX
+:rightShift	inx
+	cpx #SNOW_MAX_X	;
+	bcs :noShift	;right bounds, bge
+:storeX	txa
+	sta Snow_ListX,y
+:noShift
+
+* UPDATE Y VALUES
+	lda Snow_ListY,y
+	inc	;move flake down one line
+	cmp #SNOW_MAX_Y	;reached bottom of screen?
+	bcc :storeY	;blt
+	lda #$FFFF	;set inactive if so
+	sta Snow_ListX,y
+	bra :nextSnow	
+:storeY	sta Snow_ListY,y
+:nextSnow	iny
+	iny
+	cpy #SNOW_MAX_COUNT*2	;
+	bne :updateLoop
+	rts
+
+
+Snow_Undraw	ldy #0
+:undrawLoop	ldx Snow_ListUndraw,y
+	cpx #$FFFF	;end-byte
+	beq :done
+	ldal $012000,x
+	stal $E12000,x
+	iny
+	iny
+	bra :undrawLoop
+:done	rts
+
+
+
+****************************************
+* Random Byte/Word Functions           *
+****************************************
+* 16-bit safe RAND8 and RAND16	       
+* preserves X&Y, 8-bit random number returned in A/C  ($00xx)
+
+RAND8	phy
+	phx
+	sep $30
+	lda RAND8_Scratch
+	beq :doEor
+	asl
+	bcc :noEor
+:doEor          eor #$1d
+:noEor          sta RAND8_Scratch
+	rep $30
+	and #$00FF	; return with 0 high-byte
+	plx
+	ply
+	rts
+RAND8_Scratch	dw $99
+
+
+
+RAND16	phy
+	phx
+	sep $30
+	lda RAND16_Scratch
+	beq :lowZero ; $0000 and $8000 are special values to test for
+
+	; Do a normal shift
+	asl RAND16_Scratch
+	lda RAND16_Scratch+1
+	rol
+	bcc :noEor
+
+:doEor	; high byte is in .A
+	eor #>RAND16_Magic
+	sta RAND16_Scratch+1
+	lda RAND16_Scratch
+	eor #<RAND16_Magic
+	sta RAND16_Scratch
+	rep $30
+	plx
+	ply
+	lda RAND16_Scratch
+	rts
+
+
+	mx %11
+:lowZero	lda RAND16_Scratch+1
+	beq :doEor	; High byte is also zero, so apply the EOR
+		; For speed, you could store 'RAND16_Magic' 
+		; into 'RAND16_Scratch' directly instead of
+		; running the EORs
+
+	; wasn't zero, check for $8000
+	asl
+	beq :noEor	; if $00 is left after the shift, then it was $80
+	bcs :doEor	; else, do the EOR based on the carry bit as usual
+
+:noEor	sta RAND16_Scratch+1
+	rep $30
+	lda RAND16_Scratch
+	plx
+	ply
+	rts
+* PICK A MAGIC NUMBER
+* [$111d, $116f, $11c9, $11db, $11f3, etc... there are others]
+RAND16_Magic	= #$11db
+RAND16_Scratch	dw $9999	;seed
+
+
+****************************************
+* SHR Utils (Library goes here)        *
+****************************************
+SHR_LineList
+SHRL_0 dw $0000
+SHRL_1 dw $00A0
+SHRL_2 dw $0140
+SHRL_3 dw $01E0
+SHRL_4 dw $0280
+SHRL_5 dw $0320
+SHRL_6 dw $03C0
+SHRL_7 dw $0460
+SHRL_8 dw $0500
+SHRL_9 dw $05A0
+SHRL_10 dw $0640
+SHRL_11 dw $06E0
+SHRL_12 dw $0780
+SHRL_13 dw $0820
+SHRL_14 dw $08C0
+SHRL_15 dw $0960
+SHRL_16 dw $0A00
+SHRL_17 dw $0AA0
+SHRL_18 dw $0B40
+SHRL_19 dw $0BE0
+SHRL_20 dw $0C80
+SHRL_21 dw $0D20
+SHRL_22 dw $0DC0
+SHRL_23 dw $0E60
+SHRL_24 dw $0F00
+SHRL_25 dw $0FA0
+SHRL_26 dw $1040
+SHRL_27 dw $10E0
+SHRL_28 dw $1180
+SHRL_29 dw $1220
+SHRL_30 dw $12C0
+SHRL_31 dw $1360
+SHRL_32 dw $1400
+SHRL_33 dw $14A0
+SHRL_34 dw $1540
+SHRL_35 dw $15E0
+SHRL_36 dw $1680
+SHRL_37 dw $1720
+SHRL_38 dw $17C0
+SHRL_39 dw $1860
+SHRL_40 dw $1900
+SHRL_41 dw $19A0
+SHRL_42 dw $1A40
+SHRL_43 dw $1AE0
+SHRL_44 dw $1B80
+SHRL_45 dw $1C20
+SHRL_46 dw $1CC0
+SHRL_47 dw $1D60
+SHRL_48 dw $1E00
+SHRL_49 dw $1EA0
+SHRL_50 dw $1F40
+SHRL_51 dw $1FE0
+SHRL_52 dw $2080
+SHRL_53 dw $2120
+SHRL_54 dw $21C0
+SHRL_55 dw $2260
+SHRL_56 dw $2300
+SHRL_57 dw $23A0
+SHRL_58 dw $2440
+SHRL_59 dw $24E0
+SHRL_60 dw $2580
+SHRL_61 dw $2620
+SHRL_62 dw $26C0
+SHRL_63 dw $2760
+SHRL_64 dw $2800
+SHRL_65 dw $28A0
+SHRL_66 dw $2940
+SHRL_67 dw $29E0
+SHRL_68 dw $2A80
+SHRL_69 dw $2B20
+SHRL_70 dw $2BC0
+SHRL_71 dw $2C60
+SHRL_72 dw $2D00
+SHRL_73 dw $2DA0
+SHRL_74 dw $2E40
+SHRL_75 dw $2EE0
+SHRL_76 dw $2F80
+SHRL_77 dw $3020
+SHRL_78 dw $30C0
+SHRL_79 dw $3160
+SHRL_80 dw $3200
+SHRL_81 dw $32A0
+SHRL_82 dw $3340
+SHRL_83 dw $33E0
+SHRL_84 dw $3480
+SHRL_85 dw $3520
+SHRL_86 dw $35C0
+SHRL_87 dw $3660
+SHRL_88 dw $3700
+SHRL_89 dw $37A0
+SHRL_90 dw $3840
+SHRL_91 dw $38E0
+SHRL_92 dw $3980
+SHRL_93 dw $3A20
+SHRL_94 dw $3AC0
+SHRL_95 dw $3B60
+SHRL_96 dw $3C00
+SHRL_97 dw $3CA0
+SHRL_98 dw $3D40
+SHRL_99 dw $3DE0
+SHRL_100 dw $3E80
+SHRL_101 dw $3F20
+SHRL_102 dw $3FC0
+SHRL_103 dw $4060
+SHRL_104 dw $4100
+SHRL_105 dw $41A0
+SHRL_106 dw $4240
+SHRL_107 dw $42E0
+SHRL_108 dw $4380
+SHRL_109 dw $4420
+SHRL_110 dw $44C0
+SHRL_111 dw $4560
+SHRL_112 dw $4600
+SHRL_113 dw $46A0
+SHRL_114 dw $4740
+SHRL_115 dw $47E0
+SHRL_116 dw $4880
+SHRL_117 dw $4920
+SHRL_118 dw $49C0
+SHRL_119 dw $4A60
+SHRL_120 dw $4B00
+SHRL_121 dw $4BA0
+SHRL_122 dw $4C40
+SHRL_123 dw $4CE0
+SHRL_124 dw $4D80
+SHRL_125 dw $4E20
+SHRL_126 dw $4EC0
+SHRL_127 dw $4F60
+SHRL_128 dw $5000
+SHRL_129 dw $50A0
+SHRL_130 dw $5140
+SHRL_131 dw $51E0
+SHRL_132 dw $5280
+SHRL_133 dw $5320
+SHRL_134 dw $53C0
+SHRL_135 dw $5460
+SHRL_136 dw $5500
+SHRL_137 dw $55A0
+SHRL_138 dw $5640
+SHRL_139 dw $56E0
+SHRL_140 dw $5780
+SHRL_141 dw $5820
+SHRL_142 dw $58C0
+SHRL_143 dw $5960
+SHRL_144 dw $5A00
+SHRL_145 dw $5AA0
+SHRL_146 dw $5B40
+SHRL_147 dw $5BE0
+SHRL_148 dw $5C80
+SHRL_149 dw $5D20
+SHRL_150 dw $5DC0
+SHRL_151 dw $5E60
+SHRL_152 dw $5F00
+SHRL_153 dw $5FA0
+SHRL_154 dw $6040
+SHRL_155 dw $60E0
+SHRL_156 dw $6180
+SHRL_157 dw $6220
+SHRL_158 dw $62C0
+SHRL_159 dw $6360
+SHRL_160 dw $6400
+SHRL_161 dw $64A0
+SHRL_162 dw $6540
+SHRL_163 dw $65E0
+SHRL_164 dw $6680
+SHRL_165 dw $6720
+SHRL_166 dw $67C0
+SHRL_167 dw $6860
+SHRL_168 dw $6900
+SHRL_169 dw $69A0
+SHRL_170 dw $6A40
+SHRL_171 dw $6AE0
+SHRL_172 dw $6B80
+SHRL_173 dw $6C20
+SHRL_174 dw $6CC0
+SHRL_175 dw $6D60
+SHRL_176 dw $6E00
+SHRL_177 dw $6EA0
+SHRL_178 dw $6F40
+SHRL_179 dw $6FE0
+SHRL_180 dw $7080
+SHRL_181 dw $7120
+SHRL_182 dw $71C0
+SHRL_183 dw $7260
+SHRL_184 dw $7300
+SHRL_185 dw $73A0
+SHRL_186 dw $7440
+SHRL_187 dw $74E0
+SHRL_188 dw $7580
+SHRL_189 dw $7620
+SHRL_190 dw $76C0
+SHRL_191 dw $7760
+SHRL_192 dw $7800
+SHRL_193 dw $78A0
+SHRL_194 dw $7940
+SHRL_195 dw $79E0
+SHRL_196 dw $7A80
+SHRL_197 dw $7B20
+SHRL_198 dw $7BC0
+SHRL_199 dw $7C60
+
+
