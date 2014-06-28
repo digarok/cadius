@@ -1,5 +1,6 @@
 CADIUS_BIN="../Cadius"
 OUTPUT_DIR="/Users/dbrock/Google Drive/appleiigs/BDPorts/Cadius_v1.1/test"
+OUTPUT_DIR="."
 VOLUME_NAME="TESTDISK.2mg"
 PRODOS_VOLUME_NAME="TestDisk"
 PRODOS_FOLDER_NAME="Test.Folder"

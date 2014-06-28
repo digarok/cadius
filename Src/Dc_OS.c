@@ -13,7 +13,7 @@
 #include <malloc.h>
 #include <direct.h>
 #include <windows.h>
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined (linux)
 #include <unistd.h>
 #include <dirent.h>
 #include <ctype.h>
@@ -75,7 +75,7 @@ int myfunc(const char *path, const struct stat *sptr, int type)
 /********************************************************************/
 int GetFolderFiles(char *folder_path, char *hierarchy)
 {
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(linux)
   ftw(folder_path, myfunc, 7);
   return(0);
 #elif defined(WIN32) || defined(WIN64)
