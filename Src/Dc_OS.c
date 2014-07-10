@@ -54,6 +54,7 @@ void my_DeleteFile(char *file_path)
 
 int myfunc(const char *path, const struct stat *sptr, int type)
 {
+#if defined(__APPLE__) || defined(linux)
   /* Types: FTW_D = directory, FTW_F = normal file, FTW_DNR = non-traversable
    *            directory.  Do a man ftw for the full scoop!!!!*/
   if(!my_stricmp((char *)path,".") || !my_stricmp((char *)path,".."))
@@ -67,6 +68,7 @@ int myfunc(const char *path, const struct stat *sptr, int type)
 
   //if(MatchHierarchie(buffer_file_path,hierarchy))
    my_Memory(MEMORY_ADD_FILE,(char *)path,NULL);
+#endif
   return 0;
 } 
 
@@ -75,11 +77,12 @@ int myfunc(const char *path, const struct stat *sptr, int type)
 /********************************************************************/
 int GetFolderFiles(char *folder_path, char *hierarchy)
 {
+  int error = 0;
 #if defined(__APPLE__) || defined(linux)
   ftw(folder_path, myfunc, 7);
   return(0);
 #elif defined(WIN32) || defined(WIN64)
-  int error, rc;
+  int rc;
   long hFile;
   int first_time = 1;
   struct _finddata_t c_file;
@@ -158,8 +161,9 @@ int GetFolderFiles(char *folder_path, char *hierarchy)
   /* Libération mémoire */
   free(buffer_folder_path);
   free(buffer_file_path);
-  return(error);
 #endif
+  return(error);
+
 }
 
 
@@ -198,15 +202,16 @@ int my_CreateDirectory(char *directory)
   
   /* On veut savoir si le ce repertoire existe et on verifie qu'on a un repertoire */
   /* We need to check that the dir exists and verify that it's a directory */
-  if(stat(buffer,&sts))
+  if(stat(buffer,&sts)) {
 #if defined(WIN32) || defined(WIN64)
     mkdir(buffer);
-#else
+#elif  defined(__APPLE__) || defined(linux)
     /* r/w/search permissions for owner and group, and read/search permissions for others */
     mkdir(buffer, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 #endif
-  else if(!S_ISDIR(sts.st_mode))
+  } else if(!S_ISDIR(sts.st_mode)) {
     return(1);
+  }
 
   return(0);
 }
@@ -233,7 +238,7 @@ static int MakeAllDir(char *newdir)
 #if defined(WIN32) || defined(WIN64)
   if(mkdir(buffer) == 0)
     return(1);
-#else
+#elif  defined(__APPLE__) || defined(linux)
     /* r/w/search permissions for owner and group, and read/search permissions for others */
   if(mkdir(buffer, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0)
     return(1);
@@ -253,7 +258,7 @@ static int MakeAllDir(char *newdir)
 #if defined(WIN32) || defined(WIN64)
       if((mkdir(buffer) == -1) && (errno == ENOENT))
         return(0);
-#else
+#elif  defined(__APPLE__) || defined(linux)
       /* r/w/search permissions for owner and group, and read/search permissions for others */
       if((mkdir(buffer, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0) && (errno == ENOENT))
         return(0);
@@ -399,7 +404,7 @@ int my_stricmp(char *string1, char *string2)
 {
 #if defined(WIN32) || defined(WIN64)
   return(stricmp(string1,string2));
-#else
+#elif defined(__APPLE__) || defined (linux)
   return(strcasecmp(string1,string2));
 #endif
 }
@@ -412,7 +417,7 @@ int my_strnicmp(char *string1, char *string2, size_t length)
 {
 #if defined(WIN32) || defined(WIN64)
   return(strnicmp(string1,string2,length));
-#else
+#elif defined(__APPLE__) || defined (linux)
   return(strncasecmp(string1,string2,length));
 #endif
 }
