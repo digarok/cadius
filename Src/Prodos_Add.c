@@ -503,7 +503,8 @@ static void ComputeFileBlockUsage(struct prodos_file *current_file)
   for(i=0; i<current_file->data_length; i+=BLOCK_SIZE)
     {
       /* Recherche les plages de 0 */
-      if(i+BLOCK_SIZE <= current_file->data_length)
+      /* Le premier block ne peut pas être zéro (not sparse - GSOS P8 FST issues) */
+      if(i>0 && (i+BLOCK_SIZE <= current_file->data_length))
         result = memcmp(&current_file->data[i],empty_block,BLOCK_SIZE);
       else
         result = memcmp(&current_file->data[i],empty_block,current_file->data_length-i);
@@ -524,7 +525,8 @@ static void ComputeFileBlockUsage(struct prodos_file *current_file)
       for(i=0; i<current_file->resource_length; i+=BLOCK_SIZE)
         {
           /* Recherche les plages de 0 */
-          if(i+BLOCK_SIZE <= current_file->resource_length)
+          /* Le premier block ne peut pas être zéro (not sparse - GSOS P8 FST issues) */
+          if(i>0 && (i+BLOCK_SIZE <= current_file->resource_length))
             result = memcmp(&current_file->resource[i],empty_block,BLOCK_SIZE);
           else
             result = memcmp(&current_file->resource[i],empty_block,current_file->resource_length-i);
@@ -813,7 +815,8 @@ static WORD CreateSaplingContent(struct prodos_image *current_image, struct prod
   for(i=0,j=1,k=0; i<data_length; i+=BLOCK_SIZE,k++)
     {
       /* Recherche les plages de 0 */
-      if(i+BLOCK_SIZE <= data_length)
+      /* Le premier block ne peut pas être zéro (not sparse - GSOS P8 FST issues) */
+      if(i>0 && (i+BLOCK_SIZE <= data_length))
         is_empty = !memcmp(&data[i],empty_block,BLOCK_SIZE);
       else
         is_empty = !memcmp(&data[i],empty_block,data_length-i);
@@ -936,7 +939,8 @@ static WORD CreateTreeContent(struct prodos_image *current_image, struct prodos_
   for(i=0,j=index_data,k=0,l=0; i<data_length; i+=BLOCK_SIZE,k++)
     {
       /* Recherche les plages de 0 */
-      if(i+BLOCK_SIZE <= data_length)
+      /* Le premier block ne peut pas être zéro (not sparse - GSOS P8 FST issues) */
+      if(i>0 && (i+BLOCK_SIZE <= data_length))
         is_empty = !memcmp(&data[i],empty_block,BLOCK_SIZE);
       else
         is_empty = !memcmp(&data[i],empty_block,data_length-i);
